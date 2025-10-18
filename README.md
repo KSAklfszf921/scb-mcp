@@ -365,11 +365,29 @@ The project includes comprehensive test suites:
 - **Protocol tests**: Verify MCP communication
 - **Tool tests**: Test each tool individually
 - **Integration tests**: End-to-end workflow testing
+- **API validation tests**: Prevent schema validation regressions
 
-Run all tests:
+Run tests:
 ```bash
-npm run test-full
+# Quick validation test (fast, 4 checks)
+node test-api.mjs
+
+# Comprehensive API validation (13 test cases)
+node tests/api-validation.test.mjs
+
+# Legacy test suites
+npm run test-simple   # Basic connectivity test
+npm run test-local    # MCP protocol test
+npm run test-full     # Comprehensive test suite
 ```
+
+**🔒 Test Coverage:**
+- ✅ Schema validation for API v2 responses
+- ✅ All major endpoints (search, metadata, data retrieval)
+- ✅ Error handling and rate limiting
+- ✅ Edge cases and regression tests
+
+See [BUGFIXES.md](./BUGFIXES.md) for detailed information about critical bugs fixed and testing methodology.
 
 ## 🚦 Rate Limiting & Best Practices
 
@@ -384,6 +402,24 @@ npm run test-full
 3. **Preview before full requests**: Use `scb_preview_data` for verification
 4. **Use smart variable names**: English terms work - they auto-translate
 5. **Monitor usage**: Check `scb_check_usage` to avoid rate limits
+
+## 🔧 Recent Bug Fixes (2025-10-18)
+
+**Two critical bugs were discovered and fixed:**
+
+1. **scb_search_tables validation error** (🔴 CRITICAL)
+   - **Issue**: Schema expected `type: "Table"` field that doesn't exist in API v2
+   - **Fix**: Made `type` field optional in schema
+   - **Impact**: Search functionality now works correctly
+
+2. **scb_browse_folders 404 error** (🔴 CRITICAL)
+   - **Issue**: `/navigation` endpoint removed in API v2
+   - **Fix**: Returns helpful error with alternatives
+   - **Migration**: Use `scb_search_tables` with category filters instead
+
+**See [BUGFIXES.md](./BUGFIXES.md) for complete details and testing methodology.**
+
+---
 
 ## 🐛 Troubleshooting (Much Improved!)
 

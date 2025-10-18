@@ -387,33 +387,27 @@ ${config.sourceReferences?.length ? `**Citation:**\n${config.sourceReferences.ma
 
   private async handleBrowseFolders(args: { folderId?: string; language?: string }) {
     const { folderId, language = 'en' } = args;
-    const folder = await this.apiClient.getNavigation(folderId, language);
-    
-    const contents = folder.folderContents.map(item => {
-      switch (item.type) {
-        case 'FolderInformation':
-          return `📁 **${item.label}** (${item.id})${item.description ? `\n   ${item.description}` : ''}`;
-        case 'Table':
-          return `📊 **${item.label}** (${item.id})${item.description ? `\n   ${item.description}` : ''}
-   📅 Period: ${item.firstPeriod} - ${item.lastPeriod}
-   📝 Variables: ${item.variableNames?.join(', ') || 'N/A'}
-   📈 Updated: ${item.updated ? new Date(item.updated).toLocaleDateString() : 'N/A'}`;
-        case 'Heading':
-          return `## ${item.label}`;
-        default:
-          return `❓ ${item.label} (${item.id})`;
-      }
-    }).join('\n\n');
 
+    // NOTE: The /navigation endpoint has been removed in SCB API v2
+    // This feature is no longer available. Returning helpful error message.
     return {
       content: [
         {
           type: 'text',
-          text: `**${folder.label || 'Root'}** ${folder.id ? `(${folder.id})` : ''}${folder.description ? `\n${folder.description}` : ''}
-
-${contents}
-
-📍 *Total items: ${folder.folderContents.length}*`,
+          text: JSON.stringify({
+            error: {
+              type: "feature_not_available",
+              message: "The browse_folders feature is not available in SCB API v2",
+              details: "The /navigation endpoint has been removed in PxWebApi 2.0",
+              alternatives: [
+                "Use scb_search_tables to find tables by keyword",
+                "Search by category using the category parameter in scb_search_tables",
+                "Browse tables by subject using the 'paths' field in search results"
+              ],
+              documentation: "https://www.scb.se/en/services/open-data-api/pxwebapi/pxapi-2.0",
+              migration_notes: "PxWebApi 2.0 focuses on direct table search rather than folder navigation"
+            }
+          }, null, 2)
         },
       ],
     };

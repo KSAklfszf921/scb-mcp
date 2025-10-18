@@ -26,6 +26,9 @@ export const ConfigResponseSchema = z.object({
   })).optional()
 });
 
+// NOTE: FolderResponseSchema is for the /navigation endpoint which has been REMOVED in SCB API v2
+// This schema is kept for backwards compatibility but the endpoint is no longer functional
+// See: https://www.scb.se/en/services/open-data-api/pxwebapi/pxapi-2.0
 export const FolderResponseSchema = z.object({
   language: z.string(),
   id: z.string().nullable(),
@@ -59,7 +62,9 @@ export const FolderResponseSchema = z.object({
 export const TablesResponseSchema = z.object({
   language: z.string(),
   tables: z.array(z.object({
-    type: z.literal('Table'),
+    // NOTE: 'type' field was removed in SCB API v2 - it's no longer returned by the API
+    // Previous API versions had type: 'Table' but v2 does not include this field
+    type: z.literal('Table').optional(),
     id: z.string(),
     label: z.string(),
     description: z.string(),
