@@ -1,10 +1,12 @@
-# SCB MCP Server - Statistics Sweden Data Access for Claude Desktop
+# SCB MCP Server - Swedish Statistics & Medicine Data for Claude Desktop
 
-A Model Context Protocol (MCP) server that provides Claude Desktop with seamless access to Statistics Sweden's (SCB) PX-Web API v2. This integration enables Claude to search, browse, and retrieve Swedish statistical data with built-in rate limiting, intelligent validation, and usage monitoring.
+A Model Context Protocol (MCP) server that provides Claude Desktop with seamless access to **two major Swedish statistical APIs**: Statistics Sweden (SCB) PX-Web API v2 and E-hälsomyndigheten (Swedish eHealth Agency) medicine statistics. This integration enables Claude to search, browse, and retrieve both general Swedish statistics and detailed medicine/pharmaceutical data.
 
 ## 🎯 What is this?
 
-This project creates a bridge between Claude Desktop and Statistics Sweden's extensive statistical database. It allows Claude to:
+This project creates a bridge between Claude Desktop and Sweden's official statistical databases:
+
+### 📊 **Statistics Sweden (SCB)**
 - Access official Swedish statistics on population, economy, labor market, education, and more
 - Search and navigate through thousands of statistical tables
 - **Find region codes by name** - No more guessing municipality codes!
@@ -13,6 +15,13 @@ This project creates a bridge between Claude Desktop and Statistics Sweden's ext
 - **Validate queries before making API calls** to prevent errors and wasted requests
 - **Get actionable error messages** with specific guidance when things go wrong
 - **Preview data safely** before making large requests
+
+### 💊 **E-hälsomyndigheten (Swedish eHealth Agency)** - NEW!
+- Access national medicine statistics and pharmaceutical data
+- Get detailed sales data (prescription/OTC, costs, quantities)
+- Track defined daily doses (DDD) for medicine usage
+- Monitor medicine price trends and environmental impact
+- Retrieve data by medicine type, sales method, and time period
 
 ## 🚀 New & Improved Features
 
@@ -35,19 +44,38 @@ This project creates a bridge between Claude Desktop and Statistics Sweden's ext
 ### Architecture
 
 ```
-Claude Desktop <--> MCP Protocol <--> SCB MCP Server <--> SCB PX-Web API v2
+                          ┌─────────────────────┐
+                          │  Claude Desktop     │
+                          └──────────┬──────────┘
+                                     │ MCP Protocol
+                          ┌──────────▼──────────┐
+                          │  SCB MCP Server     │
+                          │  (v2.0.0)           │
+                          └──────────┬──────────┘
+                                     │
+                 ┌───────────────────┴───────────────────┐
+                 │                                       │
+    ┌────────────▼─────────────┐         ┌─────────────▼────────────┐
+    │ SCB PX-Web API v2        │         │ E-hälsomyndigheten       │
+    │ (Statistics Sweden)       │         │ PX-Web API v1            │
+    │                          │         │ (Medicine Statistics)    │
+    │ • General statistics     │         │ • Medicine sales         │
+    │ • Regional data          │         │ • DDD data               │
+    │ • Economic indicators    │         │ • Price index            │
+    └──────────────────────────┘         └──────────────────────────┘
 ```
 
 The server acts as an intelligent middleware that:
 1. **Receives requests** from Claude Desktop via the Model Context Protocol
-2. **Validates and translates** parameters (e.g., Swedish variable names to English)
-3. **Makes API calls** to Statistics Sweden with rate limiting
-4. **Formats responses** in a Claude-friendly way with helpful context
-5. **Provides error guidance** with specific suggestions when things go wrong
+2. **Routes requests** to appropriate API (SCB or E-hälsomyndigheten)
+3. **Validates and translates** parameters (e.g., Swedish variable names to English)
+4. **Makes API calls** with rate limiting and error handling
+5. **Formats responses** in a Claude-friendly JSON format with helpful context
+6. **Provides error guidance** with specific suggestions when things go wrong
 
 ### Key Components
 
-- **`src/index.ts`**: Main MCP server implementation with **11 specialized tools**
+- **`src/index.ts`**: Main MCP server implementation with **14 specialized tools** (11 SCB + 3 E-hälsomyndigheten)
 - **`src/api-client.ts`**: SCB API client with rate limiting, validation, and smart translation
 - **`src/types.ts`**: TypeScript schemas for data validation using Zod
 - **Built-in intelligence**: Pre-validation, bidirectional translation, and error recovery
@@ -110,9 +138,11 @@ Add to your Claude Desktop configuration file:
 
 5. **Restart Claude Desktop** to load the new server
 
-## 🛠️ Available Tools (11 Total)
+## 🛠️ Available Tools (14 Total)
 
-### Core Tools
+### 📊 SCB Statistics Sweden Tools (11 tools)
+
+#### Core Tools
 
 ### 1. `scb_get_api_status`
 Get API configuration and current rate limit status.
@@ -196,6 +226,76 @@ Get a small preview of data as structured JSON to verify your selection works co
 Example: Preview population data for Lerum before requesting full dataset
 → Returns: {"data": [{"region_code": "1484", "region_name": "Lerum", "value": 12345}], "preview_info": {"is_preview": true}}
 ```
+
+---
+
+### 💊 E-hälsomyndigheten Medicine Statistics Tools (3 tools) - NEW!
+
+### 12. `ehealth_search_tables`
+Search available medicine statistics tables from E-hälsomyndigheten.
+```
+Example: "Show available medicine statistics tables"
+→ Returns: List of available databases and tables (LM1001, LM1002, LM2001, etc.)
+
+Databases:
+- "Detaljhandel med läkemedel" (Retail medicine sales)
+- "Läkemedelsprisindex" (Medicine price index)
+- "Sålda mängder läkemedelssubstanser med möjlig miljöpåverkan" (Environmental impact)
+```
+
+### 13. `ehealth_get_table_info`
+Get detailed information about a medicine statistics table including all variables and values.
+```
+Example: "Get info about medicine table LM1001"
+→ Returns: {
+  "title": "Total försäljning efter försäljningssätt, varugrupp, period och mätvärde",
+  "variables": [
+    {
+      "code": "försäljningssätt",
+      "values": ["0=OTC non-pharmacy", "1=OTC pharmacy", "2=Prescription", "3=Requisition"]
+    },
+    {
+      "code": "varugrupp",
+      "values": ["0=Human medicines", "1=External/natural", "2=Veterinary", etc.]
+    }
+  ]
+}
+
+Common tables:
+- LM1001: Total sales by method, drug group, period
+- LM1002: Retail sales details
+- LM2001: ATC classification data
+```
+
+### 14. `ehealth_get_medicine_data` ⭐ **MEDICINE DATA**
+Retrieve actual medicine statistics data (sales, DDD, costs, packages).
+```
+Example: "Get prescription medicine sales for 2024"
+→ Query: {
+  "försäljningssätt": ["2"],  // Prescription
+  "varugrupp": ["0"],          // Human medicines
+  "period": ["4"],             // 2024
+  "mätvärde": ["0", "1", "3"]  // Cost, DDD, Packages
+}
+
+→ Returns: {
+  "data_records": [
+    {"försäljningssätt_code": "2", "varugrupp_code": "0", "period_code": "4",
+     "mätvärde_code": "0", "value": "49420371749"},  // ~49 billion SEK
+    {"...", "mätvärde_code": "1", "value": "7019980619"},  // ~7 billion DDD
+    {"...", "mätvärde_code": "3", "value": "117963901"}    // ~118 million packages
+  ],
+  "summary": {"total_records": 3, "has_data": true}
+}
+
+Variables explained:
+- försäljningssätt: 0=OTC non-pharmacy, 1=OTC pharmacy, 2=Prescription, 3=Requisition
+- varugrupp: 0=Human medicines, 1=External/natural, 2=Veterinary, 3=Trade goods
+- period: Year codes (0-4) or month codes (5-64) for 2020-2024
+- mätvärde: 0=Cost excl VAT, 1=DDD, 2=DDD/TIN, 3=Packages, 4=Benefit cost, 5=Patient fee, 6=Extra cost
+```
+
+---
 
 ## 📊 **New JSON Data Structure**
 

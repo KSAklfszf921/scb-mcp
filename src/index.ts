@@ -10,16 +10,18 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { SCBApiClient } from './api-client.js';
+import fetch from 'node-fetch';
 
 class SCBMCPServer {
   private server: Server;
-  private apiClient: SCBApiClient;
-  
+  private scbClient: SCBApiClient;
+  private ehealthClient: SCBApiClient;
+
   constructor() {
     this.server = new Server(
       {
         name: 'scb-mcp',
-        version: '1.0.0',
+        version: '2.0.0',
       },
       {
         capabilities: {
@@ -30,7 +32,12 @@ class SCBMCPServer {
       }
     );
 
-    this.apiClient = new SCBApiClient();
+    // SCB Statistics Sweden API
+    this.scbClient = new SCBApiClient('https://api.scb.se/OV0104/v2beta/api/v2');
+
+    // E-hälsomyndigheten (Swedish eHealth Agency) Medicine Statistics API
+    this.ehealthClient = new SCBApiClient('https://statistik.ehalsomyndigheten.se/api/v1');
+
     this.setupToolHandlers();
   }
 
@@ -94,6 +101,16 @@ class SCBMCPServer {
 
           case 'scb_preview_data':
             return await this.handlePreviewData(args as any);
+
+          // E-hälsomyndigheten Medicine Statistics
+          case 'ehealth_search_tables':
+            return await this.handleEhealthSearchTables(args as any);
+
+          case 'ehealth_get_table_info':
+            return await this.handleEhealthGetTableInfo(args as any);
+
+          case 'ehealth_get_medicine_data':
+            return await this.handleEhealthGetMedicineData(args as any);
 
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -353,12 +370,88 @@ class SCBMCPServer {
           required: ['tableId'],
         },
       },
+      // E-hälsomyndigheten (Swedish eHealth Agency) Medicine Statistics Tools
+      {
+        name: 'ehealth_search_tables',
+        description: 'Search medicine statistics tables from Swedish eHealth Agency (E-hälsomyndigheten). Available databases: "Detaljhandel med läkemedel" (retail sales), "Läkemedelsprisindex" (price index), "Sålda mängder läkemedelssubstanser" (environmental impact)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            database: {
+              type: 'string',
+              description: 'Database name: "Detaljhandel med läkemedel", "Läkemedelsprisindex", or "Sålda mängder läkemedelssubstanser med möjlig miljöpåverkan"',
+              default: 'Detaljhandel med läkemedel',
+            },
+            language: {
+              type: 'string',
+              description: 'Language code (sv only)',
+              default: 'sv',
+            },
+          },
+        },
+      },
+      {
+        name: 'ehealth_get_table_info',
+        description: 'Get detailed information about a medicine statistics table including variables and available values',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            tableId: {
+              type: 'string',
+              description: 'Table ID (e.g., "LM1001" for total sales, "LM1002" for retail sales, "LM2001" for ATC classification)',
+            },
+            database: {
+              type: 'string',
+              description: 'Database name',
+              default: 'Detaljhandel med läkemedel',
+            },
+            language: {
+              type: 'string',
+              description: 'Language code (sv only)',
+              default: 'sv',
+            },
+          },
+          required: ['tableId'],
+        },
+      },
+      {
+        name: 'ehealth_get_medicine_data',
+        description: 'Get medicine statistics data (sales, DDD, packages, costs) from E-hälsomyndigheten. Returns national medicine data including sales method (prescription/OTC), drug groups, time periods, and measurements (cost, DDD, packages)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            tableId: {
+              type: 'string',
+              description: 'Table ID (e.g., "LM1001")',
+            },
+            selection: {
+              type: 'object',
+              description: 'Variable selection. Common variables: försäljningssätt (0=OTC non-pharmacy, 1=OTC pharmacy, 2=Prescription, 3=Requisition), varugrupp (0=Human medicines, 1=External/natural, 2=Veterinary, 3=Trade goods), period (years or months), mätvärde (0=Cost excl VAT, 1=DDD, 2=DDD/TIN, 3=Packages, 4=Benefit cost, 5=Patient fee, 6=Extra cost)',
+              additionalProperties: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+            },
+            database: {
+              type: 'string',
+              description: 'Database name',
+              default: 'Detaljhandel med läkemedel',
+            },
+            language: {
+              type: 'string',
+              description: 'Language code (sv only)',
+              default: 'sv',
+            },
+          },
+          required: ['tableId', 'selection'],
+        },
+      },
     ];
   }
 
   private async handleGetApiStatus() {
-    const config = await this.apiClient.getConfig();
-    const usage = this.apiClient.getUsageInfo();
+    const config = await this.scbClient.getConfig();
+    const usage = this.scbClient.getUsageInfo();
     
     return {
       content: [
@@ -414,7 +507,7 @@ ${config.sourceReferences?.length ? `**Citation:**\n${config.sourceReferences.ma
   }
 
   private async handleSearchTables(args: any) {
-    const result = await this.apiClient.searchTables(args);
+    const result = await this.scbClient.searchTables(args);
     
     // Filter by category if specified
     let filteredTables = result.tables;
@@ -534,7 +627,7 @@ ${result.page.totalElements > 50 ? `💡 **Search Tips:**
 
   private async handleGetTableInfo(args: { tableId: string; language?: string }) {
     const { tableId, language = 'en' } = args;
-    const metadata = await this.apiClient.getTableMetadata(tableId, language);
+    const metadata = await this.scbClient.getTableMetadata(tableId, language);
     
     const variables = Object.entries(metadata.dimension).map(([varCode, varDef]) => {
       const valueCount = Object.keys(varDef.category.index).length;
@@ -573,10 +666,10 @@ ${metadata.extension?.notes?.map(note =>
 
   private async handleGetTableData(args: { tableId: string; selection?: Record<string, string[]>; language?: string }) {
     const { tableId, selection, language = 'en' } = args;
-    const data = await this.apiClient.getTableData(tableId, selection, language);
+    const data = await this.scbClient.getTableData(tableId, selection, language);
     
     // Transform to structured JSON data
-    const structuredData = this.apiClient.transformToStructuredData(data, selection);
+    const structuredData = this.scbClient.transformToStructuredData(data, selection);
     
     // Create user-friendly summary
     const summary = `**📊 Data Retrieved from ${tableId}**
@@ -612,7 +705,7 @@ ${structuredData.data.length > 3 ? `... and ${(structuredData.data.length - 3).t
   }
 
   private async handleCheckUsage() {
-    const usage = this.apiClient.getUsageInfo();
+    const usage = this.scbClient.getUsageInfo();
     const rateLimitInfo = usage.rateLimitInfo;
     
     return {
@@ -643,7 +736,7 @@ ${usage.requestCount > 0 ? `⚠️ **Tip:** To avoid rate limits, space out your
     const { query, language = 'en' } = args;
     
     // Search for tables that contain region data to find region codes
-    const searchResults = await this.apiClient.searchTables({
+    const searchResults = await this.scbClient.searchTables({
       query: `region ${query}`,
       pageSize: 5,
       lang: language
@@ -712,7 +805,7 @@ ${recommendations}
     
     try {
       // Get table metadata to extract variable information
-      const metadata = await this.apiClient.getTableMetadata(tableId, language);
+      const metadata = await this.scbClient.getTableMetadata(tableId, language);
       
       if (!metadata.dimension) {
         return {
@@ -851,7 +944,7 @@ ${variableData.map(v =>
         targetTableId = tableId;
       } else {
         // Look for a common population table that has region data
-        const searchResults = await this.apiClient.searchTables({
+        const searchResults = await this.scbClient.searchTables({
           query: 'population municipality region',
           pageSize: 10,
           lang: language
@@ -891,7 +984,7 @@ ${variableData.map(v =>
       }
 
       // Now use targetTableId (either specified or found)
-      const metadata = await this.apiClient.getTableMetadata(targetTableId, language);
+      const metadata = await this.scbClient.getTableMetadata(targetTableId, language);
       
       if (!metadata.dimension || !metadata.dimension['Region']) {
         return {
@@ -1047,7 +1140,7 @@ ${exactResults.map(r => `- **${r.code}**: ${r.name}`).join('\n')}
     
     try {
       // Use the existing validation logic
-      const validation = await this.apiClient.validateSelection(tableId, selection, language);
+      const validation = await this.scbClient.validateSelection(tableId, selection, language);
       
       const statusIcon = validation.isValid ? '✅' : '❌';
       const statusText = validation.isValid ? 'VALID' : 'INVALID';
@@ -1123,10 +1216,10 @@ ${Object.entries(selection).map(([key, values]) => `- ${key}: [${values.join(', 
       }
 
       // Get a small sample of data
-      const data = await this.apiClient.getTableData(tableId, previewSelection, language);
+      const data = await this.scbClient.getTableData(tableId, previewSelection, language);
       
       // Transform to structured JSON data with preview flag
-      const structuredData = this.apiClient.transformToStructuredData(data, previewSelection);
+      const structuredData = this.scbClient.transformToStructuredData(data, previewSelection);
       
       // Add preview metadata
       const previewData = {
@@ -1193,10 +1286,230 @@ ${structuredData.data.slice(0, 5).map(record => {
     }
   }
 
+  // E-hälsomyndigheten handlers
+  private async handleEhealthSearchTables(args: { database?: string; language?: string }) {
+    const { database = 'Detaljhandel med läkemedel', language = 'sv' } = args;
+
+    try {
+      const encodedDb = encodeURIComponent(database);
+      const url = `${this.ehealthClient['baseUrl']}/${language}/${encodedDb}/`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch tables: ${response.statusText}`);
+      }
+
+      const html = await response.text();
+
+      // Parse table links from HTML
+      const tableMatches = html.matchAll(/href="[^"]*\/-\/([^"]+\.px)\/"/g);
+      const tables = Array.from(tableMatches, match => match[1].replace('.px', ''));
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              database,
+              available_tables: tables,
+              count: tables.length,
+              usage_hint: `Use ehealth_get_table_info with tableId (e.g., "${tables[0]}") to see variables and data`,
+              common_tables: {
+                LM1001: 'Total försäljning (Total sales)',
+                LM1002: 'Detaljhandel (Retail sales)',
+                LM2001: 'ATC-klassificering (ATC classification)'
+              }
+            }, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleEhealthGetTableInfo(args: { tableId: string; database?: string; language?: string }) {
+    const { tableId, database = 'Detaljhandel med läkemedel', language = 'sv' } = args;
+
+    try {
+      const encodedDb = encodeURIComponent(database);
+      const url = `${this.ehealthClient['baseUrl']}/${language}/${encodedDb}/${tableId}.px`;
+
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'SCB-MCP-Client/2.0'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch table metadata: ${response.statusText}`);
+      }
+
+      const metadata = await response.json() as any;
+
+      // Format for better readability
+      const formattedInfo = {
+        table_id: tableId,
+        title: metadata.title,
+        variables: metadata.variables.map((v: any) => ({
+          code: v.code,
+          text: v.text,
+          value_count: v.values.length,
+          sample_values: v.values.slice(0, 5).map((val: string, idx: number) => ({
+            code: val,
+            label: v.valueTexts[idx]
+          })),
+          all_value_labels: v.values.length <= 20 ? v.valueTexts : undefined
+        })),
+        usage_example: {
+          tool: 'ehealth_get_medicine_data',
+          selection: Object.fromEntries(
+            metadata.variables.slice(0, 2).map((v: any) => [v.code, [v.values[0]]])
+          )
+        }
+      };
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(formattedInfo, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              error: error instanceof Error ? error.message : String(error),
+              tableId,
+              hint: 'Use ehealth_search_tables first to find available table IDs'
+            }, null, 2)
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleEhealthGetMedicineData(args: {
+    tableId: string;
+    selection: Record<string, string[]>;
+    database?: string;
+    language?: string
+  }) {
+    const { tableId, selection, database = 'Detaljhandel med läkemedel', language = 'sv' } = args;
+
+    try {
+      const encodedDb = encodeURIComponent(database);
+      const url = `${this.ehealthClient['baseUrl']}/${language}/${encodedDb}/${tableId}.px`;
+
+      // Build query in PX-Web format
+      const query = {
+        query: Object.entries(selection).map(([code, values]) => ({
+          code,
+          selection: {
+            filter: 'item',
+            values
+          }
+        })),
+        response: {
+          format: 'json'
+        }
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'SCB-MCP-Client/2.0'
+        },
+        body: JSON.stringify(query)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API request failed: ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json() as any;
+
+      // Transform to structured format
+      const structuredData = {
+        query: {
+          table_id: tableId,
+          database,
+          selection,
+          requested_at: new Date().toISOString()
+        },
+        metadata: data.metadata?.[0] || {},
+        columns: data.columns || [],
+        data_records: data.data?.map((record: any) => {
+          const obj: any = {};
+          record.key.forEach((keyVal: string, idx: number) => {
+            const column = data.columns[idx];
+            obj[`${column.code}_code`] = keyVal;
+            // Try to find label
+            const varIdx = data.columns.findIndex((c: any) => c.code === column.code);
+            if (varIdx >= 0) {
+              obj[`${column.code}_label`] = keyVal; // Could be enhanced with actual labels
+            }
+          });
+          obj.value = record.values[0];
+          return obj;
+        }) || [],
+        summary: {
+          total_records: data.data?.length || 0,
+          has_data: (data.data?.length || 0) > 0
+        }
+      };
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(structuredData, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              error: {
+                type: 'data_fetch_failed',
+                message: error instanceof Error ? error.message : String(error),
+                troubleshooting: [
+                  'Use ehealth_get_table_info to see available variables',
+                  'Check that variable codes match exactly (case-sensitive)',
+                  'Ensure value codes are valid for the selected variables'
+                ]
+              }
+            }, null, 2)
+          }
+        ]
+      };
+    }
+  }
+
   async run() {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    
+
     // This will keep the process running
     process.stdin.resume();
   }
