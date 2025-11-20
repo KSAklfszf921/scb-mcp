@@ -1,6 +1,6 @@
 {
   "name": "scb-mcp",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Model Context Protocol server for Statistics Sweden (SCB) and E-hälsomyndigheten (Swedish eHealth Agency) PX-Web APIs",
   "main": "dist/index.js",
   "type": "module",
