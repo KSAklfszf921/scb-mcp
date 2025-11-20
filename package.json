@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
+    "start:http": "node dist/http-server.js",
     "dev": "tsc --watch",
     "test": "npm run test-api",
     "test-api": "npm run build && node test-api.mjs",
@@ -28,6 +29,8 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@types/express": "^5.0.5",
+    "express": "^5.1.0",
     "node-fetch": "^3.3.2",
     "zod": "^3.22.4"
   },
