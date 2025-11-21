@@ -1,21 +1,27 @@
-import fetch from 'node-fetch';
-import { 
-  ConfigResponse, 
+import fetch, { RequestInit } from 'node-fetch';
+import {
+  ConfigResponse,
   ConfigResponseSchema,
-  FolderResponse, 
+  FolderResponse,
   FolderResponseSchema,
-  TablesResponse, 
+  TablesResponse,
   TablesResponseSchema,
-  Dataset, 
+  Dataset,
   DatasetSchema,
-  RateLimitInfo 
+  RateLimitInfo
 } from './types.js';
+
+
+// Utility function for delay
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 export class SCBApiClient {
   private baseUrl: string;
   private rateLimitInfo: RateLimitInfo | null = null;
   private requestCount = 0;
   private windowStartTime = new Date();
+  private maxRetries = 3; // Maximum number of retries for transient errors
+  private initialRetryDelay = 1000; // Initial delay in ms for exponential backoff
 
   constructor(baseUrl = 'https://api.scb.se/OV0104/v2beta/api/v2') {
     this.baseUrl = baseUrl;
@@ -88,51 +94,97 @@ export class SCBApiClient {
     }
   }
 
-  private async makeRequest<T>(endpoint: string, schema: any): Promise<T> {
+  private async makeRequest<T>(
+    endpoint: string, 
+    schema: any, 
+    options?: RequestInit,
+    retries = 0
+  ): Promise<T> {
     await this.checkRateLimit();
     
     const url = `${this.baseUrl}${endpoint}`;
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'SCB-MCP-Client/1.0'
-      }
-    });
+    const defaultHeaders: Record<string, string> = {
+      'Accept': 'application/json',
+      'User-Agent': 'SCB-MCP-Client/1.0'
+    };
 
-    this.requestCount++;
-    if (this.rateLimitInfo) {
-      this.rateLimitInfo.remaining = Math.max(0, this.rateLimitInfo.maxCalls - this.requestCount);
+    const combinedHeaders: Record<string, string> = {
+      ...defaultHeaders,
+      ...(options?.headers as Record<string, string> || {})
+    };
+
+    const fetchOptions: RequestInit = {
+      method: options?.method || 'GET',
+      headers: combinedHeaders,
+      redirect: options?.redirect,
+      referrer: options?.referrer,
+      referrerPolicy: options?.referrerPolicy,
+      signal: options?.signal
+    };
+
+    // Explicitly handle the body based on method and presence
+    const requestMethod = fetchOptions.method?.toUpperCase();
+    if (options?.body !== undefined && !['GET', 'HEAD'].includes(requestMethod || '')) {
+      fetchOptions.body = options.body;
+    } else if (['GET', 'HEAD'].includes(requestMethod || '')) {
+      fetchOptions.body = undefined; // Ensure no body for GET/HEAD
     }
+    
+    try {
+      const response = await fetch(url, fetchOptions);
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        throw new Error(`Rate limit exceeded (429). Wait and try again.`);
+      this.requestCount++;
+      if (this.rateLimitInfo) {
+        this.rateLimitInfo.remaining = Math.max(0, this.rateLimitInfo.maxCalls - this.requestCount);
       }
-      
-      // Try to get error details from response body
-      let errorDetails = '';
-      try {
-        const errorText = await response.text();
-        if (errorText.includes('<!DOCTYPE html') || errorText.includes('<html')) {
-          errorDetails = ' (Server returned HTML error page)';
-        } else {
-          errorDetails = `: ${errorText.substring(0, 100)}`;
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error(`Rate limit exceeded (429). Wait and try again.`);
         }
-      } catch (e) {
-        // Ignore error reading response body
+        
+        // Retry for transient network errors or specific status codes (e.g., 5xx errors)
+        if (retries < this.maxRetries && (response.status >= 500 || response.status === 408)) {
+          const retryDelay = this.initialRetryDelay * Math.pow(2, retries);
+          console.warn(`Transient error for ${endpoint} (Status: ${response.status}). Retrying in ${retryDelay / 1000}s... (Attempt ${retries + 1}/${this.maxRetries})`);
+          await delay(retryDelay);
+          return this.makeRequest(endpoint, schema, options, retries + 1);
+        }
+
+        // Try to get error details from response body
+        let errorDetails = '';
+        try {
+          const errorText = await response.text();
+          if (errorText.includes('<!DOCTYPE html') || errorText.includes('<html')) {
+            errorDetails = ' (Server returned HTML error page)';
+          } else {
+            errorDetails = `: ${errorText.substring(0, 100)}`;
+          }
+        } catch (e) {
+          // Ignore error reading response body
+        }
+        
+        throw new Error(`API request failed: ${response.status} ${response.statusText}${errorDetails}`);
       }
-      
-      throw new Error(`API request failed: ${response.status} ${response.statusText}${errorDetails}`);
-    }
 
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      const responseText = await response.text();
-      throw new Error(`Expected JSON response but got ${contentType}. Response: ${responseText.substring(0, 100)}...`);
-    }
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const responseText = await response.text();
+        throw new Error(`Expected JSON response but got ${contentType}. Response: ${responseText.substring(0, 100)}...`);
+      }
 
-    const data = await response.json();
-    return schema.parse(data);
+      const data = await response.json();
+      return schema.parse(data);
+    } catch (error: any) {
+      // Retry for network-level errors (e.g., ECONNRESET, ENOTFOUND)
+      if (retries < this.maxRetries && (error.code === 'ECONNRESET' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT')) {
+        const retryDelay = this.initialRetryDelay * Math.pow(2, retries);
+        console.warn(`Network error for ${endpoint} (Code: ${error.code}). Retrying in ${retryDelay / 1000}s... (Attempt ${retries + 1}/${this.maxRetries})`);
+        await delay(retryDelay);
+        return this.makeRequest(endpoint, schema, options, retries + 1);
+      }
+      throw error; // Re-throw if max retries reached or it's not a retriable error
+    }
   }
 
   async getConfig(): Promise<ConfigResponse> {
