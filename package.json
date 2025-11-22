@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "start:http": "node dist/http-server.js",
+    "start:mcp": "node dist/http-mcp-server.js",
     "dev": "tsc --watch",
     "test": "npm run test-api",
     "test-api": "npm run build && node test-api.mjs",

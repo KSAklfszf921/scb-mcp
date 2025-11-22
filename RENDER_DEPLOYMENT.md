@@ -53,32 +53,28 @@ När deploymenten är klar får du en URL:
 https://scb-mcp-XXXXX.onrender.com
 ```
 
-### MCP Endpoint
+### MCP SSE Endpoint
 ```
-https://scb-mcp-XXXXX.onrender.com/mcp
+https://scb-mcp-XXXXX.onrender.com/sse
 ```
+
+**Använd denna URL i Claude Desktop config!**
 
 ### Test Health Check
 ```bash
 curl https://scb-mcp-XXXXX.onrender.com/health
 ```
 
-### Example Tool Call
-```bash
-curl -X POST https://scb-mcp-XXXXX.onrender.com/mcp/call \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool": "ehealth_get_medicine_data",
-    "arguments": {
-      "tableId": "LM1001",
-      "selection": {
-        "försäljningssätt": ["2"],
-        "varugrupp": ["0"],
-        "period": ["4"],
-        "mätvärde": ["0", "1", "3"]
-      }
-    }
-  }'
+**Förväntat svar:**
+```json
+{
+  "status": "ok",
+  "version": "2.1.0",
+  "service": "SCB MCP Server (SSE)",
+  "protocol": "MCP over SSE",
+  "tools": 14,
+  "documentation": "https://github.com/KSAklfszf921/scb-mcp"
+}
 ```
 
 ## 🤖 Anslut till Claude Desktop
@@ -89,23 +85,42 @@ Lägg till i din Claude Desktop config (`~/Library/Application Support/Claude/cl
 {
   "mcpServers": {
     "scb-statistics": {
-      "url": "https://scb-mcp-XXXXX.onrender.com/mcp",
-      "description": "Swedish Statistics & Medicine Data",
-      "authentication": "none"
+      "url": "https://scb-mcp-XXXXX.onrender.com/sse",
+      "transport": "sse",
+      "description": "Swedish Statistics & Medicine Data"
     }
   }
 }
 ```
 
-**OBS:** Ingen token eller OAuth krävs! 🎉
+**VIKTIGT:**
+- Använd `/sse` endpoint (inte `/mcp`)
+- Ange `"transport": "sse"` för Server-Sent Events
+- Ingen autentisering krävs! 🎉
+
+### Alternativ: Lokal testning
+
+För lokal testning (t.ex. `http://localhost:3000`):
+
+```json
+{
+  "mcpServers": {
+    "scb-statistics": {
+      "url": "http://localhost:3000/sse",
+      "transport": "sse",
+      "description": "Swedish Statistics & Medicine Data (Local)"
+    }
+  }
+}
+```
 
 ## 🔧 Endpoints
 
 | Endpoint | Method | Beskrivning | Auth Required |
 |----------|--------|-------------|---------------|
 | `/health` | GET | Health check | ❌ No |
-| `/mcp` | GET | MCP info & available tools | ❌ No |
-| `/mcp/call` | POST | Anropa MCP-verktyg | ❌ No |
+| `/sse` | GET | MCP via Server-Sent Events | ❌ No |
+| `/message` | POST | MCP message handling (used by SSE) | ❌ No |
 
 ## 📊 Tillgängliga Verktyg (14 st)
 
