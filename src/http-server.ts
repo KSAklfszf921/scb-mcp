@@ -2,6 +2,10 @@
 
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { marked } from 'marked';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -12,6 +16,9 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { SCBApiClient } from './api-client.js';
 import { prompts, getPromptById, generatePromptMessages } from './prompts.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,7 +51,7 @@ app.use((err: any, req: any, res: any, next: any) => {
 const server = new Server(
   {
     name: 'SCB Statistics Server',
-    version: '2.4.0',
+    version: '2.4.1',
   },
   {
     capabilities: {
@@ -99,7 +106,7 @@ app.options('/mcp', (req, res) => {
 app.get('/mcp', (req, res) => {
   res.json({
     protocol: 'mcp',
-    version: '2.4.0',
+    version: '2.4.1',
     name: 'SCB Statistics Server',
     description: 'Swedish statistics data via MCP protocol',
     authentication: 'none',
@@ -157,7 +164,7 @@ app.post('/mcp', async (req, res) => {
           },
           serverInfo: {
             name: 'SCB Statistics Server',
-            version: '2.4.0',
+            version: '2.4.1',
           },
         },
       });
@@ -255,6 +262,200 @@ app.post('/mcp', async (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Root endpoint - display README as HTML
+app.get('/', (req, res) => {
+  try {
+    // Read README.md from project root
+    const readmePath = path.join(__dirname, '..', 'README.md');
+    const readmeContent = fs.readFileSync(readmePath, 'utf-8');
+
+    // Convert markdown to HTML
+    const htmlContent = marked.parse(readmeContent);
+
+    // Send HTML response with styling
+    res.send(`
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCB MCP Server - Documentation</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+      line-height: 1.6;
+      color: #24292e;
+      background: #f6f8fa;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      background: white;
+      padding: 40px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+    }
+
+    h1 {
+      font-size: 2em;
+      border-bottom: 1px solid #eaecef;
+      padding-bottom: 0.3em;
+      margin-bottom: 16px;
+    }
+
+    h2 {
+      font-size: 1.5em;
+      border-bottom: 1px solid #eaecef;
+      padding-bottom: 0.3em;
+      margin-top: 24px;
+      margin-bottom: 16px;
+    }
+
+    h3 {
+      font-size: 1.25em;
+      margin-top: 24px;
+      margin-bottom: 16px;
+    }
+
+    p {
+      margin-bottom: 16px;
+    }
+
+    a {
+      color: #0366d6;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    code {
+      background: #f6f8fa;
+      padding: 0.2em 0.4em;
+      border-radius: 3px;
+      font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
+      font-size: 85%;
+    }
+
+    pre {
+      background: #f6f8fa;
+      padding: 16px;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: 100%;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 16px;
+    }
+
+    table th,
+    table td {
+      padding: 6px 13px;
+      border: 1px solid #dfe2e5;
+    }
+
+    table th {
+      background: #f6f8fa;
+      font-weight: 600;
+    }
+
+    table tr:nth-child(2n) {
+      background: #f6f8fa;
+    }
+
+    ul, ol {
+      margin-bottom: 16px;
+      padding-left: 2em;
+    }
+
+    li {
+      margin-bottom: 4px;
+    }
+
+    blockquote {
+      padding: 0 1em;
+      color: #6a737d;
+      border-left: 4px solid #dfe2e5;
+      margin-bottom: 16px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      background: #0366d6;
+      color: white;
+      border-radius: 3px;
+      font-size: 12px;
+      margin-right: 8px;
+      margin-bottom: 16px;
+    }
+
+    .header-links {
+      margin-bottom: 24px;
+      padding: 12px;
+      background: #f1f8ff;
+      border: 1px solid #c8e1ff;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 20px;
+      }
+
+      body {
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-links">
+      <span class="badge">v2.4.1</span>
+      <a href="/mcp">API Endpoint</a> |
+      <a href="/health">Health Check</a> |
+      <a href="https://github.com/KSAklfszf921/scb-mcp-http">GitHub</a>
+    </div>
+    ${htmlContent}
+  </div>
+</body>
+</html>
+    `);
+  } catch (error) {
+    res.status(500).send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Error</title>
+</head>
+<body>
+  <h1>Error loading documentation</h1>
+  <p>${error instanceof Error ? error.message : 'Unknown error'}</p>
+</body>
+</html>
+    `);
+  }
 });
 
 // Start server

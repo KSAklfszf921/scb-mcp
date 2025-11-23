@@ -2,6 +2,18 @@
 
 Alla viktiga ändringar i projektet dokumenteras i denna fil.
 
+## [2.4.1] - 2025-11-23
+
+### Tillagt
+- **HTML-dokumentation på root-path** - https://scb-mcp.onrender.com/ visar nu README.md som en snygg HTML-sida
+- GitHub-liknande styling för dokumentationen
+- Länkar till API Endpoint, Health Check och GitHub repo i header
+- Responsiv design för mobila enheter
+
+### Förbättrat
+- README.md nu tillgänglig som både markdown och formaterad HTML
+- Bättre användarupplevelse vid besök på root URL
+
 ## [2.4.0] - 2025-11-23
 
 ### Tillagt
