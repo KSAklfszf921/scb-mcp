@@ -64,6 +64,31 @@ Lägg till i din Claude Desktop-konfiguration:
 claude mcp add --transport http scb-statistics https://scb-mcp-http.onrender.com/mcp
 ```
 
+### Lokal MCP (stdio)
+
+Kör servern lokalt via stdio-transport efter build:
+
+```bash
+npm install
+npm run build
+npm run start:stdio
+```
+
+Exempel på Claude Desktop-konfiguration för lokal stdio-server:
+
+```json
+{
+  "mcpServers": {
+    "scb-statistics-local": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/full/path/till/dist/index.js"],
+      "description": "Lokalt SCB MCP-server (stdio)"
+    }
+  }
+}
+```
+
 ### Med andra MCP-klienter
 
 Servern är tillgänglig via HTTP på:
@@ -154,14 +179,25 @@ Detta genererar en strukturerad guide som använder flera verktyg för att analy
 
 ## Deployment
 
-### Render
+### Render (Docker)
 
-1. Skapa ny Web Service på [render.com](https://render.com)
-2. Koppla till GitHub-repot
-3. Konfigurera:
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npm start`
-   - **Environment**: Node
+Render-deploymenten använder en Dockerfile för att säkerställa en konsekvent bygg- och körmiljö för både lokalt bruk och den publicerade MCP-URL:en `https://scb-mcp.onrender.com/mcp`.
+
+**Viktigt:** Om Render-loggen visar att den “Requesting Node.js version ...” bygger tjänsten inte från Dockerfilen. Skapa då en ny tjänst via Blueprint eller ändra tjänstens runtime till **Docker**.
+
+1. Deploya via [Deploy to Render](https://dashboard.render.com/blueprints) och peka på det här repo:t (Render läser `render.yaml`).
+2. Verifiera under **Runtime** att Docker är valt och att `./Dockerfile` används.
+3. (Om tjänsten redan finns) Uppdatera befintlig tjänst till Docker-runtime eller skapa en ny med blueprinten för att undvika Node-buildpack.
+4. Efter deploy är MCP-endpointen tillgänglig på `/mcp` (GET för metadata, POST för JSON-RPC)
+
+### Lokalt med Docker
+
+```bash
+docker build -t scb-mcp .
+docker run -p 3000:3000 scb-mcp
+```
+
+Servern svarar på `http://localhost:3000/mcp` och `/health`.
 
 ### Vercel/Railway/Fly.io
 
