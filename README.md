@@ -1,5 +1,7 @@
 <img width="640" height="320" alt="MCP SERVER" src="https://github.com/user-attachments/assets/8183270f-cc19-4513-a26b-c8c18e60f1d8" />
 
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-Published-brightgreen)](https://registry.modelcontextprotocol.io/servers/io.github.isakskogstad/scb-mcp)
+
 # 📊 SCB MCP Server
 
 
